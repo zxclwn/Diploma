@@ -12,6 +12,7 @@ import scipy.sparse.linalg as spla
 from scipy.spatial import Delaunay, cKDTree
 from scipy.interpolate import griddata
 import time
+from localization import tr, set_lang
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
@@ -37,7 +38,7 @@ class DamSimulation:
 
     def check_abort(self):
         if self.abort_check and self.abort_check():
-            raise InterruptedError("Розрахунок зупинено користувачем")
+            raise InterruptedError(tr("Розрахунок зупинено користувачем"))
 
     def set_dam_geometry(self, x_start, x_end, depth):
         self.dam_start_m = x_start
@@ -507,18 +508,14 @@ class DamSimulation:
                 C_U = self.C[:-2, 1:-1]
                 C_D = self.C[2:, 1:-1]
 
-                # Конвекція: Схема проти потоку
                 dCdx = np.where(vx > 0, (C_C - C_L) / self.dx, (C_R - C_C) / self.dx)
                 dCdy = np.where(vy > 0, (C_C - C_U) / self.dy, (C_D - C_C) / self.dy)
                 conv = -(vx * dCdx + vy * dCdy)
 
-                # Дифузія: Центральні різниці
                 diff = self.D * ((C_R - 2 * C_C + C_L) / self.dx ** 2 + (C_D - 2 * C_C + C_U) / self.dy ** 2)
 
-                # Оновлення концентрації
                 self.C[1:-1, 1:-1][mask] += (dt / self.n) * (conv + self.n * diff)[mask]
 
-                # Граничні умови
                 self.C[0, :self.dam_start_idx] = 0.0
                 if current_time <= discharge_duration:
                     self.C[0, s_idx] = s_conc
@@ -548,7 +545,7 @@ class ResultView:
         self.frame.pack(fill=tk.BOTH, expand=True)
 
         if self.calc_time is not None:
-            timer_lbl = ttk.Label(self.frame, text=f"Час розрахунку: {self.calc_time:.3f} с")
+            timer_lbl = ttk.Label(self.frame, text=f"{tr('Час розрахунку: ')}{self.calc_time:.3f}{tr(' с')}")
             timer_lbl.pack(side=tk.TOP, pady=5)
 
         self.show_mesh_var = tk.BooleanVar(value=True)
@@ -556,14 +553,14 @@ class ResultView:
         toolbar = ttk.Frame(self.frame)
         toolbar.pack(side=tk.TOP, fill=tk.X)
 
-        ttk.Checkbutton(toolbar, text="Відображати сітку", variable=self.show_mesh_var, command=self.redraw_plots).pack(
+        ttk.Checkbutton(toolbar, text=tr("Відображати сітку"), variable=self.show_mesh_var, command=self.redraw_plots).pack(
             side=tk.LEFT, padx=5, pady=5)
 
         if not is_detached:
-            ttk.Button(toolbar, text="Винести в окреме вікно", command=self.detach).pack(side=tk.RIGHT, padx=5, pady=5)
-            ttk.Button(toolbar, text="Закрити", command=self.close_tab).pack(side=tk.RIGHT, padx=5, pady=5)
+            ttk.Button(toolbar, text=tr("Винести в окреме вікно"), command=self.detach).pack(side=tk.RIGHT, padx=5, pady=5)
+            ttk.Button(toolbar, text=tr("Закрити"), command=self.close_tab).pack(side=tk.RIGHT, padx=5, pady=5)
         else:
-            ttk.Button(toolbar, text="Згорнути", command=self.attach).pack(side=tk.RIGHT, padx=5, pady=5)
+            ttk.Button(toolbar, text=tr("Згорнути"), command=self.attach).pack(side=tk.RIGHT, padx=5, pady=5)
 
         self.fig, (self.ax1, self.ax2) = plt.subplots(2, 1, figsize=(8, 8))
         self.fig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.1, hspace=0.25)
@@ -575,7 +572,7 @@ class ResultView:
 
         hist_len = len(self.sim.fem_history) if self.method == "FEM" else len(self.sim.history)
         self.valmax = max(0, hist_len - 1)
-        self.slider = Slider(self.slider_ax, 'День', 0, self.valmax, valinit=0, valstep=1)
+        self.slider = Slider(self.slider_ax, tr('День'), 0, self.valmax, valinit=0, valstep=1)
         self.slider.on_changed(self.update_plot)
 
         self.X, self.Y = np.meshgrid(np.linspace(0, self.sim.Lx, self.sim.Nx),
@@ -707,7 +704,7 @@ class ResultView:
                             linewidth=0.8, density=1.5)
 
         self.draw_solid_geometry(self.ax1)
-        self.ax1.set_title(f"Напір")
+        self.ax1.set_title(tr("Напір"))
         self.update_plot(self.slider.val)
 
     def update_plot(self, val):
@@ -739,14 +736,14 @@ class ResultView:
                 self.ax2.contourf(self.X, self.Y, C_plot, 40, cmap='Reds', vmin=0, vmax=1)
 
         self.draw_solid_geometry(self.ax2)
-        self.ax2.set_title(f"Забруднення: День {day}")
+        self.ax2.set_title(f"{tr('Забруднення: День ')}{day}")
         self.canvas.draw_idle()
 
 
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("Конструктор гребель")
+        self.root.title(tr("Конструктор гребель"))
         self.abort_request = False
 
         self.calc_counter = 0
@@ -755,15 +752,20 @@ class App:
         side_panel = ttk.Frame(root, padding="10")
         side_panel.pack(side=tk.LEFT, fill=tk.Y, expand=False)
 
-        method_f = ttk.LabelFrame(side_panel, text=" Метод розрахунку ", padding="10")
+        lang_frame = ttk.Frame(side_panel)
+        lang_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Button(lang_frame, text="UA", command=lambda: self.change_lang("ua")).pack(side=tk.LEFT, expand=True, fill=tk.X)
+        ttk.Button(lang_frame, text="EN", command=lambda: self.change_lang("en")).pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+        method_f = ttk.LabelFrame(side_panel, text=tr(" Метод розрахунку "), padding="10")
         method_f.pack(fill=tk.X, pady=5)
         self.method_var = tk.StringVar(value="FEM")
-        ttk.Radiobutton(method_f, text="Скінченні елементи", variable=self.method_var, value="FEM").pack(
+        ttk.Radiobutton(method_f, text=tr("Скінченні елементи"), variable=self.method_var, value="FEM").pack(
             anchor=tk.W)
-        ttk.Radiobutton(method_f, text="Скінченні різниці", variable=self.method_var, value="FDM").pack(
+        ttk.Radiobutton(method_f, text=tr("Скінченні різниці"), variable=self.method_var, value="FDM").pack(
             anchor=tk.W)
 
-        geom_domain_f = ttk.LabelFrame(side_panel, text=" Геометрія області ", padding="10")
+        geom_domain_f = ttk.LabelFrame(side_panel, text=tr(" Геометрія області "), padding="10")
         geom_domain_f.pack(fill=tk.X, pady=5)
         geom_domain_f.columnconfigure(0, weight=1)
         self.geom_vars = {
@@ -771,10 +773,10 @@ class App:
             'Глибина області (м)': tk.DoubleVar(value=25)
         }
         for i, (k, v) in enumerate(self.geom_vars.items()):
-            ttk.Label(geom_domain_f, text=k).grid(row=i, column=0, sticky=tk.W, pady=2)
+            ttk.Label(geom_domain_f, text=tr(k)).grid(row=i, column=0, sticky=tk.W, pady=2)
             ttk.Entry(geom_domain_f, textvariable=v, width=8, justify='right').grid(row=i, column=1, sticky=tk.E)
 
-        geom_dam_f = ttk.LabelFrame(side_panel, text=" Геометрія греблі ", padding="10")
+        geom_dam_f = ttk.LabelFrame(side_panel, text=tr(" Геометрія греблі "), padding="10")
         geom_dam_f.pack(fill=tk.X, pady=5)
         geom_dam_f.columnconfigure(0, weight=1)
         self.dam_vars = {
@@ -783,17 +785,17 @@ class App:
             'Глибина основи (м)': tk.DoubleVar(value=5)
         }
         for i, (k, v) in enumerate(self.dam_vars.items()):
-            ttk.Label(geom_dam_f, text=k).grid(row=i, column=0, sticky=tk.W, pady=2)
+            ttk.Label(geom_dam_f, text=tr(k)).grid(row=i, column=0, sticky=tk.W, pady=2)
             ttk.Entry(geom_dam_f, textvariable=v, width=8, justify='right').grid(row=i, column=1, sticky=tk.E)
 
-        self.piles_f = ttk.LabelFrame(side_panel, text=" Шпунти ", padding="10")
+        self.piles_f = ttk.LabelFrame(side_panel, text=tr(" Шпунти "), padding="10")
         self.piles_f.pack(fill=tk.X, pady=5)
         self.p_frame = ttk.Frame(self.piles_f)
         self.p_frame.pack(fill=tk.X)
         self.p_list = []
-        ttk.Button(self.piles_f, text="+ Додати шпунт", command=self.add_p_ui).pack(fill=tk.X, pady=(5, 0))
+        ttk.Button(self.piles_f, text=tr("+ Додати шпунт"), command=self.add_p_ui).pack(fill=tk.X, pady=(5, 0))
 
-        phys_f = ttk.LabelFrame(side_panel, text=" Фізичні властивості ", padding="10")
+        phys_f = ttk.LabelFrame(side_panel, text=tr(" Фізичні властивості "), padding="10")
         phys_f.pack(fill=tk.X, pady=5)
         phys_f.columnconfigure(0, weight=1)
         self.phys_vars = {
@@ -805,10 +807,10 @@ class App:
             'Період (діб)': tk.IntVar(value=45)
         }
         for i, (k, v) in enumerate(self.phys_vars.items()):
-            ttk.Label(phys_f, text=k).grid(row=i, column=0, sticky=tk.W, pady=2)
+            ttk.Label(phys_f, text=tr(k)).grid(row=i, column=0, sticky=tk.W, pady=2)
             ttk.Entry(phys_f, textvariable=v, width=8, justify='right').grid(row=i, column=1, sticky=tk.E)
 
-        poll_f = ttk.LabelFrame(side_panel, text=" Властивості забруднення ", padding="10")
+        poll_f = ttk.LabelFrame(side_panel, text=tr(" Властивості забруднення "), padding="10")
         poll_f.pack(fill=tk.X, pady=5)
         poll_f.columnconfigure(0, weight=1)
         self.poll_vars = {
@@ -817,17 +819,17 @@ class App:
             'Концентрація (0-1)': tk.DoubleVar(value=1.0)
         }
         for i, (k, v) in enumerate(self.poll_vars.items()):
-            ttk.Label(poll_f, text=k).grid(row=i, column=0, sticky=tk.W, pady=2)
+            ttk.Label(poll_f, text=tr(k)).grid(row=i, column=0, sticky=tk.W, pady=2)
             ttk.Entry(poll_f, textvariable=v, width=8, justify='right').grid(row=i, column=1, sticky=tk.E)
 
         r = len(self.poll_vars)
         self.poll_type_var = tk.StringVar(value="continuous")
-        ttk.Radiobutton(poll_f, text="Постійне джерело", variable=self.poll_type_var, value="continuous",
+        ttk.Radiobutton(poll_f, text=tr("Постійне джерело"), variable=self.poll_type_var, value="continuous",
                         command=self.toggle_poll_duration).grid(row=r, column=0, columnspan=2, sticky=tk.W, pady=(5, 0))
-        ttk.Radiobutton(poll_f, text="Тимчасове джерело", variable=self.poll_type_var, value="temporary",
+        ttk.Radiobutton(poll_f, text=tr("Тимчасове джерело"), variable=self.poll_type_var, value="temporary",
                         command=self.toggle_poll_duration).grid(row=r + 1, column=0, columnspan=2, sticky=tk.W)
 
-        self.poll_duration_lbl = ttk.Label(poll_f, text="Тривалість забруднення (діб):")
+        self.poll_duration_lbl = ttk.Label(poll_f, text=tr("Тривалість забруднення (діб):"))
         self.poll_duration_lbl.grid(row=r + 2, column=0, sticky=tk.W, pady=2)
 
         self.poll_duration_var = tk.DoubleVar(value=10.0)
@@ -839,18 +841,18 @@ class App:
         self.btn_frame = ttk.Frame(side_panel)
         self.btn_frame.pack(fill=tk.X, pady=5)
 
-        self.calc_btn = ttk.Button(self.btn_frame, text="РОЗРАХУВАТИ", command=self.start_calculation)
+        self.calc_btn = ttk.Button(self.btn_frame, text=tr("РОЗРАХУВАТИ"), command=self.start_calculation)
         self.calc_btn.pack(fill=tk.X)
 
-        self.stop_btn = ttk.Button(self.btn_frame, text="ЗУПИНИТИ РОЗРАХУНОК", command=self.stop_calculation)
+        self.stop_btn = ttk.Button(self.btn_frame, text=tr("ЗУПИНИТИ РОЗРАХУНОК"), command=self.stop_calculation)
 
-        self.reset_btn = ttk.Button(self.btn_frame, text="Скинути налаштування", command=self.reset_defaults)
+        self.reset_btn = ttk.Button(self.btn_frame, text=tr("Скинути налаштування"), command=self.reset_defaults)
         self.reset_btn.pack(fill=tk.X, pady=(5, 0))
 
         self.status_text = tk.Text(side_panel, height=3, width=30, wrap=tk.WORD, bg=root.cget("bg"), relief="flat",
                                    font=("TkDefaultFont", 9))
         self.status_text.pack(fill=tk.X, pady=2)
-        self.set_status("Готовий", "gray")
+        self.set_status(tr("Готовий"), "gray")
 
         main_f = ttk.Frame(root)
         main_f.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
@@ -860,6 +862,12 @@ class App:
 
         self.add_p_ui(20, 8)
         self.add_p_ui(30, 12)
+
+    def change_lang(self, lang):
+        set_lang(lang)
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        self.__init__(self.root)
 
     def toggle_poll_duration(self):
         if self.poll_type_var.get() == "temporary":
@@ -880,10 +888,10 @@ class App:
         f.pack(fill=tk.X, pady=2)
         xv, lv = tk.DoubleVar(value=x), tk.DoubleVar(value=l)
 
-        ttk.Label(f, text="Розташування:").pack(side=tk.LEFT)
+        ttk.Label(f, text=tr("Розташування:")).pack(side=tk.LEFT)
         ttk.Entry(f, textvariable=xv, width=5).pack(side=tk.LEFT, padx=(2, 5))
 
-        ttk.Label(f, text="Довжина:").pack(side=tk.LEFT)
+        ttk.Label(f, text=tr("Довжина:")).pack(side=tk.LEFT)
         ttk.Entry(f, textvariable=lv, width=5).pack(side=tk.LEFT, padx=(2, 5))
 
         d = (f, xv, lv)
@@ -919,7 +927,7 @@ class App:
         self.p_list.clear()
         self.add_p_ui(20, 8)
         self.add_p_ui(30, 12)
-        self.set_status("Налаштування скинуто", "black")
+        self.set_status(tr("Налаштування скинуто"), "black")
 
     def start_calculation(self):
         self.abort_request = False
@@ -929,13 +937,13 @@ class App:
         self.stop_btn.config(state='normal')
 
         self.start_time = time.time()
-        self.set_status("Йде розрахунок...", "red")
+        self.set_status(tr("Йде розрахунок..."), "red")
         threading.Thread(target=self.perform_task).start()
 
     def stop_calculation(self):
         self.abort_request = True
         self.stop_btn.config(state='disabled')
-        self.set_status("Зупиняємо...", "orange")
+        self.set_status(tr("Зупиняємо..."), "orange")
 
     def reset_buttons(self):
         self.calc_btn.config(state='normal')
@@ -1003,19 +1011,19 @@ class App:
         except InterruptedError:
             self.root.after(0, self.on_calculation_aborted)
         except Exception as e:
-            self.root.after(0, lambda: self.set_status(f"Помилка: {str(e)}", "red"))
+            self.root.after(0, lambda: self.set_status(f"{tr('Помилка: ')}{str(e)}", "red"))
             self.root.after(0, self.reset_buttons)
 
     def on_calculation_aborted(self):
-        self.set_status("Розрахунок зупинено", "orange")
+        self.set_status(tr("Розрахунок зупинено"), "orange")
         self.reset_buttons()
 
     def on_calculation_complete(self):
         calc_time = time.time() - self.start_time
         self.calc_counter += 1
-        title = f"Рішення {self.calc_counter} ({"МСЕ" if self.method_var.get() == "FEM" else "МСР"})"
+        title = f"{tr('Рішення ')}{self.calc_counter} ({tr('МСЕ') if self.method_var.get() == 'FEM' else tr('МСР')})"
 
-        self.set_status("Готово", "green")
+        self.set_status(tr("Готово"), "green")
         self.reset_buttons()
 
         tab_frame = ttk.Frame(self.notebook)
