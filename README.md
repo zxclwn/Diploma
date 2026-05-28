@@ -22,4 +22,4 @@ Download the standalone executable from the **Releases** section to run the appl
 To run from the source code:
 1. Clone the repository.
 2. Install the required dependencies: `pip install numpy scipy matplotlib`
-3. Launch the application: `python main.py`
+3. Launch the application: `python Diploma.py`
