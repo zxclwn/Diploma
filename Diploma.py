@@ -507,18 +507,14 @@ class DamSimulation:
                 C_U = self.C[:-2, 1:-1]
                 C_D = self.C[2:, 1:-1]
 
-                # Конвекція: Схема проти потоку
                 dCdx = np.where(vx > 0, (C_C - C_L) / self.dx, (C_R - C_C) / self.dx)
                 dCdy = np.where(vy > 0, (C_C - C_U) / self.dy, (C_D - C_C) / self.dy)
                 conv = -(vx * dCdx + vy * dCdy)
 
-                # Дифузія: Центральні різниці
                 diff = self.D * ((C_R - 2 * C_C + C_L) / self.dx ** 2 + (C_D - 2 * C_C + C_U) / self.dy ** 2)
 
-                # Оновлення концентрації
                 self.C[1:-1, 1:-1][mask] += (dt / self.n) * (conv + self.n * diff)[mask]
 
-                # Граничні умови
                 self.C[0, :self.dam_start_idx] = 0.0
                 if current_time <= discharge_duration:
                     self.C[0, s_idx] = s_conc
@@ -680,7 +676,7 @@ class ResultView:
         self.ax1.clear()
         self.ax1.set_xlim(0, self.sim.Lx)
         self.ax1.set_ylim(self.sim.Ly, 0)
-        self.ax1.set_aspect('auto')
+        self.ax1.set_aspect('equal')
 
         if self.method == "FEM" and self.sim.fem_elements is not None:
             self.ax1.tricontourf(self.sim.fem_nodes[:, 0], self.sim.fem_nodes[:, 1], self.sim.fem_elements,
@@ -715,7 +711,7 @@ class ResultView:
         self.ax2.clear()
         self.ax2.set_xlim(0, self.sim.Lx)
         self.ax2.set_ylim(self.sim.Ly, 0)
-        self.ax2.set_aspect('auto')
+        self.ax2.set_aspect('equal')
 
         if self.method == "FEM" and self.sim.fem_elements is not None:
             day_idx = min(day, len(self.sim.fem_history) - 1)
@@ -747,13 +743,37 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("Конструктор гребель")
+        self.root.geometry("1280x920")
         self.abort_request = False
 
         self.calc_counter = 0
         self.result_views = []
 
-        side_panel = ttk.Frame(root, padding="10")
-        side_panel.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+        side_panel_container = ttk.Frame(root)
+        side_panel_container.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+
+        self.canvas = tk.Canvas(side_panel_container, width=330, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(side_panel_container, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        side_panel = ttk.Frame(self.canvas, padding="10")
+        canvas_window = self.canvas.create_window((0, 0), window=side_panel, anchor="nw")
+
+        side_panel.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfig(canvas_window, width=e.width))
+
+        def on_mousewheel(event):
+            if event.num == 4 or event.delta > 0:
+                self.canvas.yview_scroll(-1, "units")
+            elif event.num == 5 or event.delta < 0:
+                self.canvas.yview_scroll(1, "units")
+
+        root.bind_all("<MouseWheel>", on_mousewheel)
+        root.bind_all("<Button-4>", on_mousewheel)
+        root.bind_all("<Button-5>", on_mousewheel)
 
         method_f = ttk.LabelFrame(side_panel, text=" Метод розрахунку ", padding="10")
         method_f.pack(fill=tk.X, pady=5)
@@ -853,13 +873,16 @@ class App:
         self.set_status("Готовий", "gray")
 
         main_f = ttk.Frame(root)
-        main_f.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        main_f.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.notebook = ttk.Notebook(main_f)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
         self.add_p_ui(20, 8)
         self.add_p_ui(30, 12)
+
+        self.root.update_idletasks()
+        self.canvas.config(height=side_panel.winfo_reqheight())
 
     def toggle_poll_duration(self):
         if self.poll_type_var.get() == "temporary":
